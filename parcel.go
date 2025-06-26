@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 )
 
 type ParcelStore struct {
@@ -13,48 +14,189 @@ func NewParcelStore(db *sql.DB) ParcelStore {
 }
 
 func (s ParcelStore) Add(p Parcel) (int, error) {
-	// реализуйте добавление строки в таблицу parcel, используйте данные из переменной p
+	// Выполняем SQL-запрос на вставку данных
+	var result, err = s.DB.Exec(
+		"INSERT INTO parcel (client, status, address, created_at) VALUES (?, ?, ?, ?)",
+		p.Client,
+		p.Status,
+		p.Address,
+		p.CreatedAt,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert parcel: %w", err)
+	}
 
-	// верните идентификатор последней добавленной записи
-	return 0, nil
+	// Получаем ID последней вставленной записи
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get last insert ID: %w", err)
+	}
+
+	return int(id), nil
 }
 
 func (s ParcelStore) Get(number int) (Parcel, error) {
-	// реализуйте чтение строки по заданному number
-	// здесь из таблицы должна вернуться только одна строка
-
-	// заполните объект Parcel данными из таблицы
 	p := Parcel{}
+
+	// Выполняем SQL-запрос для выборки строки по number
+	row := s.DB.QueryRow(
+		"SELECT number, client, status, address, created_at FROM parcel WHERE number = ?",
+		number,
+	)
+
+	// Сканируем данные из строки в структуру Parcel
+	err := row.Scan(
+		&p.Number,
+		&p.Client,
+		&p.Status,
+		&p.Address,
+		&p.CreatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Если запись не найдена, возвращаем пустую структуру и ошибку
+			return Parcel{}, fmt.Errorf("parcel with number %d not found", number)
+		}
+		// В случае других ошибок возвращаем их
+		return Parcel{}, fmt.Errorf("failed to get parcel: %w", err)
+	}
 
 	return p, nil
 }
 
 func (s ParcelStore) GetByClient(client int) ([]Parcel, error) {
-	// реализуйте чтение строк из таблицы parcel по заданному client
-	// здесь из таблицы может вернуться несколько строк
+	var parcels []Parcel
 
-	// заполните срез Parcel данными из таблицы
-	var res []Parcel
+	// Выполняем SQL-запрос для выборки всех строк по client
+	rows, err := s.DB.Query(
+		"SELECT number, client, status, address, created_at FROM parcel WHERE client = ?",
+		client,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query parcels: %w", err)
+	}
+	defer rows.Close()
 
-	return res, nil
+	// Итерируем по результатам запроса
+	for rows.Next() {
+		var p Parcel
+		err := rows.Scan(
+			&p.Number,
+			&p.Client,
+			&p.Status,
+			&p.Address,
+			&p.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan parcel: %w", err)
+		}
+		parcels = append(parcels, p)
+	}
+
+	// Проверяем ошибки, которые могли возникнуть во время итерации
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
+	}
+
+	return parcels, nil
 }
 
 func (s ParcelStore) SetStatus(number int, status string) error {
-	// реализуйте обновление статуса в таблице parcel
+	// Выполняем SQL-запрос для обновления статуса
+	result, err := s.DB.Exec(
+		"UPDATE parcel SET status = ? WHERE number = ?",
+		status,
+		number,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update status: %w", err)
+	}
+
+	// Проверяем, была ли обновлена хотя бы одна строка
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("parcel with number %d not found", number)
+	}
 
 	return nil
 }
 
 func (s ParcelStore) SetAddress(number int, address string) error {
-	// реализуйте обновление адреса в таблице parcel
-	// менять адрес можно только если значение статуса registered
+	// Начинаем транзакцию
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() // Откатываем транзакцию в случае ошибки
+
+	// 1. Проверяем текущий статус посылки
+	var currentStatus string
+	err = tx.QueryRow(
+		"SELECT status FROM parcel WHERE number = ? FOR UPDATE",
+		number,
+	).Scan(&currentStatus)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("parcel with number %d not found", number)
+		}
+		return fmt.Errorf("failed to get parcel status: %w", err)
+	}
+
+	// 2. Проверяем, что статус "registered"
+	if currentStatus != "registered" {
+		return fmt.Errorf("address can only be changed for parcels with 'registered' status")
+	}
+
+	// 3. Обновляем адрес
+	result, err := tx.Exec(
+		"UPDATE parcel SET address = ? WHERE number = ?",
+		address,
+		number,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update address: %w", err)
+	}
+
+	// Проверяем, что обновление выполнено
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("no rows were updated")
+	}
+
+	// Фиксируем транзакцию
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
 
 	return nil
 }
 
 func (s ParcelStore) Delete(number int) error {
-	// реализуйте удаление строки из таблицы parcel
-	// удалять строку можно только если значение статуса registered
+	result, err := s.DB.Exec(
+		"DELETE FROM parcel WHERE number = ? AND status = 'registered'",
+		number,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete parcel: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("parcel not found or status not 'registered'")
+	}
 
 	return nil
 }
