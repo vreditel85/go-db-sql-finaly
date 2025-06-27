@@ -15,7 +15,7 @@ func NewParcelStore(db *sql.DB) ParcelStore {
 
 func (s ParcelStore) Add(p Parcel) (int, error) {
 	// Выполняем SQL-запрос на вставку данных
-	var result, err = s.DB.Exec(
+	var result, err = s.db.Exec(
 		"INSERT INTO parcel (client, status, address, created_at) VALUES (?, ?, ?, ?)",
 		p.Client,
 		p.Status,
@@ -39,7 +39,7 @@ func (s ParcelStore) Get(number int) (Parcel, error) {
 	p := Parcel{}
 
 	// Выполняем SQL-запрос для выборки строки по number
-	row := s.DB.QueryRow(
+	row := s.db.QueryRow(
 		"SELECT number, client, status, address, created_at FROM parcel WHERE number = ?",
 		number,
 	)
@@ -69,7 +69,7 @@ func (s ParcelStore) GetByClient(client int) ([]Parcel, error) {
 	var parcels []Parcel
 
 	// Выполняем SQL-запрос для выборки всех строк по client
-	rows, err := s.DB.Query(
+	rows, err := s.db.Query(
 		"SELECT number, client, status, address, created_at FROM parcel WHERE client = ?",
 		client,
 	)
@@ -104,7 +104,7 @@ func (s ParcelStore) GetByClient(client int) ([]Parcel, error) {
 
 func (s ParcelStore) SetStatus(number int, status string) error {
 	// Выполняем SQL-запрос для обновления статуса
-	result, err := s.DB.Exec(
+	result, err := s.db.Exec(
 		"UPDATE parcel SET status = ? WHERE number = ?",
 		status,
 		number,
@@ -128,7 +128,7 @@ func (s ParcelStore) SetStatus(number int, status string) error {
 
 func (s ParcelStore) SetAddress(number int, address string) error {
 	// Начинаем транзакцию
-	tx, err := s.DB.Begin()
+	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -137,7 +137,7 @@ func (s ParcelStore) SetAddress(number int, address string) error {
 	// 1. Проверяем текущий статус посылки
 	var currentStatus string
 	err = tx.QueryRow(
-		"SELECT status FROM parcel WHERE number = ? FOR UPDATE",
+		"SELECT status FROM parcel WHERE number = ?",
 		number,
 	).Scan(&currentStatus)
 
@@ -181,7 +181,7 @@ func (s ParcelStore) SetAddress(number int, address string) error {
 }
 
 func (s ParcelStore) Delete(number int) error {
-	result, err := s.DB.Exec(
+	result, err := s.db.Exec(
 		"DELETE FROM parcel WHERE number = ? AND status = 'registered'",
 		number,
 	)
