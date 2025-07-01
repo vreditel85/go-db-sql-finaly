@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"testing"
 	"time"
@@ -40,48 +41,30 @@ func TestAddGetDelete(t *testing.T) {
 
 	// add
 	id, err := store.Add(parcel)
-	if err != nil {
-		t.Fatalf("Add() error = %v", err)
+	if assert.NoError(t, err, "Add() should not return error") {
+		if assert.NotZero(t, id, "Add() should return non-zero ID") {
+			parcel.Number = id // сохраняем присвоенный идентификатор
+		}
 	}
-	if id == 0 {
-		t.Error("Add() returned id = 0, want non-zero")
-	}
-	parcel.Number = id // сохраняем присвоенный идентификатор
 
 	// get
 	got, err := store.Get(id)
-	if err != nil {
-		t.Fatalf("Get() error = %v", err)
-	}
-
-	// check fields
-	if got.Number != parcel.Number {
-		t.Errorf("Number = %v, want %v", got.Number, parcel.Number)
-	}
-	if got.Client != parcel.Client {
-		t.Errorf("Client = %v, want %v", got.Client, parcel.Client)
-	}
-	if got.Status != parcel.Status {
-		t.Errorf("Status = %v, want %v", got.Status, parcel.Status)
-	}
-	if got.Address != parcel.Address {
-		t.Errorf("Address = %v, want %v", got.Address, parcel.Address)
-	}
-	if got.CreatedAt != parcel.CreatedAt {
-		t.Errorf("CreatedAt = %v, want %v", got.CreatedAt, parcel.CreatedAt)
+	if assert.NoError(t, err, "Get() should not return error") {
+		// check fields
+		assert.Equal(t, parcel.Number, got.Number, "Number should match")
+		assert.Equal(t, parcel.Client, got.Client, "Client should match")
+		assert.Equal(t, parcel.Status, got.Status, "Status should match")
+		assert.Equal(t, parcel.Address, got.Address, "Address should match")
+		assert.Equal(t, parcel.CreatedAt, got.CreatedAt, "CreatedAt should match")
 	}
 
 	// delete
 	err = store.Delete(id)
-	if err != nil {
-		t.Fatalf("Delete() error = %v", err)
-	}
+	assert.NoError(t, err, "Delete() should not return error")
 
 	// verify deletion
 	_, err = store.Get(id)
-	if err == nil {
-		t.Error("Get() after Delete() returned no error, want error")
-	}
+	assert.Error(t, err, "Get() after Delete() should return error")
 }
 
 // TestSetAddress проверяет обновление адреса

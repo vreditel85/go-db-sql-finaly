@@ -127,35 +127,9 @@ func (s ParcelStore) SetStatus(number int, status string) error {
 }
 
 func (s ParcelStore) SetAddress(number int, address string) error {
-	// Начинаем транзакцию
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback() // Откатываем транзакцию в случае ошибки
-
-	// 1. Проверяем текущий статус посылки
-	var currentStatus string
-	err = tx.QueryRow(
-		"SELECT status FROM parcel WHERE number = ?",
-		number,
-	).Scan(&currentStatus)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("parcel with number %d not found", number)
-		}
-		return fmt.Errorf("failed to get parcel status: %w", err)
-	}
-
-	// 2. Проверяем, что статус "registered"
-	if currentStatus != "registered" {
-		return fmt.Errorf("address can only be changed for parcels with 'registered' status")
-	}
-
-	// 3. Обновляем адрес
-	result, err := tx.Exec(
-		"UPDATE parcel SET address = ? WHERE number = ?",
+	// Выполняем обновление с проверкой статуса в одном запросе
+	result, err := s.db.Exec(
+		"UPDATE parcel SET address = ? WHERE number = ? AND status = 'registered'",
 		address,
 		number,
 	)
@@ -163,18 +137,26 @@ func (s ParcelStore) SetAddress(number int, address string) error {
 		return fmt.Errorf("failed to update address: %w", err)
 	}
 
-	// Проверяем, что обновление выполнено
+	// Проверяем, была ли обновлена какая-либо строка
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("failed to check rows affected: %w", err)
 	}
 	if rowsAffected == 0 {
-		return fmt.Errorf("no rows were updated")
-	}
+		// Проверяем, существует ли вообще посылка с таким номером
+		var exists bool
+		err = s.db.QueryRow(
+			"SELECT EXISTS(SELECT 1 FROM parcel WHERE number = ?)",
+			number,
+		).Scan(&exists)
+		if err != nil {
+			return fmt.Errorf("failed to check parcel existence: %w", err)
+		}
 
-	// Фиксируем транзакцию
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		if !exists {
+			return fmt.Errorf("parcel with number %d not found", number)
+		}
+		return fmt.Errorf("address can only be changed for parcels with 'registered' status")
 	}
 
 	return nil
