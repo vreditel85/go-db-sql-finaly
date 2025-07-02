@@ -41,21 +41,29 @@ func TestAddGetDelete(t *testing.T) {
 
 	// add
 	id, err := store.Add(parcel)
-	if assert.NoError(t, err, "Add() should not return error") {
-		if assert.NotZero(t, id, "Add() should return non-zero ID") {
-			parcel.Number = id // сохраняем присвоенный идентификатор
-		}
-	}
+	assert.NoError(t, err, "Add() should not return error")
+	assert.NotZero(t, id, "Add() should return non-zero ID")
+	parcel.Number = id // сохраняем присвоенный идентификатор
 
 	// get
 	got, err := store.Get(id)
-	if assert.NoError(t, err, "Get() should not return error") {
-		// check fields
-		assert.Equal(t, parcel.Number, got.Number, "Number should match")
-		assert.Equal(t, parcel.Client, got.Client, "Client should match")
-		assert.Equal(t, parcel.Status, got.Status, "Status should match")
-		assert.Equal(t, parcel.Address, got.Address, "Address should match")
-		assert.Equal(t, parcel.CreatedAt, got.CreatedAt, "CreatedAt should match")
+	assert.NoError(t, err, "Get() should not return error")
+
+	// check field
+	if parcel.Number != got.Number {
+		t.Errorf("Number mismatch: got %v, want %v", got.Number, parcel.Number)
+	}
+	if parcel.Client != got.Client {
+		t.Errorf("Client mismatch: got %v, want %v", got.Client, parcel.Client)
+	}
+	if parcel.Status != got.Status {
+		t.Errorf("Status mismatch: got %v, want %v", got.Status, parcel.Status)
+	}
+	if parcel.Address != got.Address {
+		t.Errorf("Address mismatch: got %v, want %v", got.Address, parcel.Address)
+	}
+	if parcel.CreatedAt != got.CreatedAt {
+		t.Errorf("CreatedAt mismatch: got %v, want %v", got.CreatedAt, parcel.CreatedAt)
 	}
 
 	// delete
@@ -85,9 +93,7 @@ func TestSetAddress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
-	if id == 0 {
-		t.Error("Add() returned id = 0, want non-zero")
-	}
+	assert.NotZero(t, id, "Add() should return non-zero ID")
 	parcel.Number = id // сохраняем присвоенный идентификатор
 
 	// set new address
@@ -146,9 +152,7 @@ func TestSetStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
-	if id == 0 {
-		t.Error("Add() returned id = 0, want non-zero")
-	}
+	assert.NotZero(t, id, "Add() should return non-zero ID")
 	parcel.Number = id // сохраняем присвоенный идентификатор
 
 	// set new status
@@ -218,9 +222,7 @@ func TestGetByClient(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Add() error = %v", err)
 		}
-		if id == 0 {
-			t.Error("Add() returned id = 0, want non-zero")
-		}
+		assert.NotZero(t, id, "Add() should return non-zero ID")
 
 		// обновляем идентификатор добавленной у посылки
 		parcels[i].Number = id
